@@ -12,11 +12,6 @@ struct player {
         txt2 = t2;
         spr.setTexture(txt1);
     }
-    player(std::string t1, std::string t2) {
-        txt1.loadFromFile(t1);
-        txt2.loadFromFile(t2);
-        spr.setTexture(txt1);
-    }
     Clock rattler;
 
     int nowtxt = 1;
@@ -64,8 +59,6 @@ struct player {
 
 int main()
 {
-
-    
     RenderWindow window(VideoMode(1500, 1000), L"Новый проект", Style::Fullscreen);
     window.setVerticalSyncEnabled(true);
 
@@ -74,7 +67,10 @@ int main()
     Texture sect;
     if (!tul.loadFromFile("seal.jpg") || !frs.loadFromFile("forest.jpg") || !sect.loadFromFile("images.jpg")) {
         return EXIT_FAILURE;
-    }
+    }   
+        tul.loadFromFile("seal.jpg");
+        frs.loadFromFile("forest.jpg");
+        sect.loadFromFile("images.jpg");
         vector<player> seals;
         sf::Sprite bg;
         bg.setTexture(frs);
@@ -97,11 +93,11 @@ int main()
                 if (event.type == sf::Event::Closed) {
                     window.close();
                 }
-                
-                
+
+
             }
-            
-            if (Mouse::isButtonPressed(Mouse::Left) && Mouse::getPosition().x<100 && Mouse::getPosition().y >  window.getSize().y - 100 && rat.getElapsedTime().asSeconds()>1) {
+
+            if (Mouse::isButtonPressed(Mouse::Left) && Mouse::getPosition().x<100 && Mouse::getPosition().y >  window.getSize().y - 100 && rat.getElapsedTime().asSeconds() > 1) {
                 seals.push_back(player(tul, sect));
                 rat.restart();
             }
@@ -109,25 +105,28 @@ int main()
                 seals.push_back(player(sect, tul));
                 rat.restart();
             }
-            
 
-          sprite.check();//!
-          window.clear(Color::Blue);
-          window.draw(bg);
-          sprite.draw(window);//!
-          window.draw(create1);
-          window.draw(create2);
-              for (player i : seals) {
-                  i.check();//не вызывается и картинки не двигаются
-              }
-          for (player i : seals) {
-             i.draw(window);//!
-          }
-          window.display();
-           
+
+            sprite.check();//!
+            window.clear(Color::Blue);
+            window.draw(bg);
+            sprite.draw(window);//!
+            window.draw(create1);
+            window.draw(create2);
+            for (player i : seals) {
+                i.check();//не вызывается и картинки не двигаются
+            }
+            for (player i : seals) {    
+                i.draw(window);//!
+            }
+            window.display();
+            int da = 0;
+            for (int i = 0; i < 10; i++) {
+                da++;
+            }
            
             
-            
+            //wovih 
 
         }
     
