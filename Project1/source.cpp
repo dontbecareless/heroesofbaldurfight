@@ -26,13 +26,8 @@ struct player {
             spr.move(-2, 0);
             dvig--;
         }
-        else if (((Mouse::isButtonPressed(Mouse::Left) && (Mouse::getPosition().x > spr.getPosition().x && Mouse::getPosition().x < spr.getPosition().x + txt1.getSize().x && Mouse::getPosition().y > spr.getPosition().y && Mouse::getPosition().y < spr.getPosition().y + txt1.getSize().y)) && dvig == 0) &&  nowtxt==1){
-            
+        else if (((Mouse::isButtonPressed(Mouse::Left) && (Mouse::getPosition().x > spr.getPosition().x && Mouse::getPosition().x < spr.getPosition().x + txt1.getSize().x && Mouse::getPosition().y > spr.getPosition().y && Mouse::getPosition().y < spr.getPosition().y + txt1.getSize().y)) && dvig == 0) &&  nowtxt==1){  
                 dvig = 50;
-            
-            
-
-           
         }else if (((Mouse::isButtonPressed(Mouse::Left) && (Mouse::getPosition().x > spr.getPosition().x && Mouse::getPosition().x < spr.getPosition().x + txt1.getSize().x && Mouse::getPosition().y > spr.getPosition().y && Mouse::getPosition().y < spr.getPosition().y + txt1.getSize().y)) && dvig == 0) && nowtxt == 2) {
     
                 dvig = 50;
@@ -93,10 +88,7 @@ int main()
                 if (event.type == sf::Event::Closed) {
                     window.close();
                 }
-
-
             }
-
             if (Mouse::isButtonPressed(Mouse::Left) && Mouse::getPosition().x<100 && Mouse::getPosition().y >  window.getSize().y - 100 && rat.getElapsedTime().asSeconds() > 1) {
                 seals.push_back(player(tul, sect));
                 rat.restart();
@@ -105,8 +97,6 @@ int main()
                 seals.push_back(player(sect, tul));
                 rat.restart();
             }
-
-
             sprite.check();//!
             window.clear(Color::Blue);
             window.draw(bg);
@@ -120,14 +110,5 @@ int main()
                 i.draw(window);//!
             }
             window.display();
-            int da = 0;
-            for (int i = 0; i < 10; i++) {
-                da++;
-            }
-           
-            
-            //wovih 
-
         }
-    
-}//egfiy
+}
