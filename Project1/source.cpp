@@ -8,30 +8,22 @@ struct player {
     Texture txt1;
     Texture txt2;
     Sprite spr;
-    player(Texture t1, Texture t2) {
+ /*   player(Texture t1, Texture t2) {
         txt1 = t1;
-        txt2 = t2;
+        txt2 = t2;               Данный код более уместен в seal1/2
         spr.setTexture(txt1);
     }
     player() {
     
-    }
-    player(const player& obj) {
+    }*/
+    /*player(const player& obj) {
         txt1 = obj.txt1;
-        txt2 = obj.txt2;
+        txt2 = obj.txt2;     Данный код не работает по необъяснимым мне причиснам, так что я сделал через костыли
         spr.setTexture(txt1);
-    }   
-    player& operator=(const player& obj) {
-        player hui(obj.txt1, obj.txt2);
-        return hui;
-    }
- 
-
+    }*/  
 
     Clock rattler;
-    
     int nowtxt = 1; 
-
     void check() {
 
         if (dvig > 0 && nowtxt == 1) {
@@ -42,39 +34,51 @@ struct player {
         else if (dvig > 0 && nowtxt==2) {
             spr.move(-2, 0);
             dvig--;
-            cout << dvig << endl;
         }
         else if (((Mouse::isButtonPressed(Mouse::Left) && (Mouse::getPosition().x > spr.getPosition().x && Mouse::getPosition().x < spr.getPosition().x + txt1.getSize().x && Mouse::getPosition().y > spr.getPosition().y && Mouse::getPosition().y < spr.getPosition().y + txt1.getSize().y)) && dvig == 0) &&  nowtxt==1){  
                 dvig = 50;  
-                cout << dvig << endl;
         }else if (((Mouse::isButtonPressed(Mouse::Left) && (Mouse::getPosition().x > spr.getPosition().x && Mouse::getPosition().x < spr.getPosition().x + txt1.getSize().x && Mouse::getPosition().y > spr.getPosition().y && Mouse::getPosition().y < spr.getPosition().y + txt1.getSize().y)) && dvig == 0) && nowtxt == 2) {
     
                 dvig = 50;
-                cout << dvig<< endl;
          
         } else if (((Mouse::isButtonPressed(Mouse::Right) && (Mouse::getPosition().x > spr.getPosition().x && Mouse::getPosition().x < spr.getPosition().x + txt1.getSize().x && Mouse::getPosition().y > spr.getPosition().y && Mouse::getPosition().y < spr.getPosition().y + txt1.getSize().y))) && nowtxt == 2) {
             if (rattler.getElapsedTime().asSeconds() > 1) {
                 nowtxt = 1;
-                spr.setTexture(txt1);
                 rattler.restart();
-                cout << "Да всё ок блять" << endl;
             }
         }
         else if (((Mouse::isButtonPressed(Mouse::Right) && (Mouse::getPosition().x > spr.getPosition().x && Mouse::getPosition().x < spr.getPosition().x + txt1.getSize().x && Mouse::getPosition().y > spr.getPosition().y && Mouse::getPosition().y < spr.getPosition().y + txt1.getSize().y))) && nowtxt == 1) {
             if (rattler.getElapsedTime().asSeconds() > 1) {
                 nowtxt = 2;
-                spr.setTexture(txt2);
                 rattler.restart();
-                cout << "Да всё ок блять" << endl;
             }
         }
         
     }
     void draw(RenderWindow& win) {
+        if (nowtxt == 1) {
+            spr.setTexture(txt1);
+        }
+        else {
+            spr.setTexture(txt2);
+        }
         win.draw(spr);
     }
     pair<Texture, Texture> gettxts() const {
         return { txt1, txt2 };
+    }
+};
+struct seal1 : public player {    
+    seal1() {
+        txt1.loadFromFile("seal.jpg");
+        txt2.loadFromFile("images.jpg");
+    }
+};
+struct seal2 : public player {
+    seal2() {
+        txt1.loadFromFile("seal.jpg");
+        txt2.loadFromFile("images.jpg");
+        nowtxt = 2;
     }
 };
 
@@ -92,7 +96,7 @@ int main()
         tul.loadFromFile("seal.jpg");
         frs.loadFromFile("forest.jpg");
         sect.loadFromFile("images.jpg");
-        vector<player> seals(1);
+        vector<player> seals;
         sf::Sprite bg;
         bg.setTexture(frs);
         Vector2u razm = window.getSize();
@@ -115,12 +119,12 @@ int main()
                 }
             }
             if (Mouse::isButtonPressed(Mouse::Left) && Mouse::getPosition().x<100 && Mouse::getPosition().y >  window.getSize().y - 100 && rat.getElapsedTime().asSeconds() > 1) {
-                seals.push_back(player(tul, sect));
+                seals.push_back(seal1());
                 rat.restart();
                 cout << seals.size() << endl;
             }
             else if (Mouse::isButtonPressed(Mouse::Left) && Mouse::getPosition().x > window.getSize().x - 100 && Mouse::getPosition().y > window.getSize().y - 100 && rat.getElapsedTime().asSeconds() > 1) {
-                seals.push_back(player(sect, tul));
+                seals.push_back(seal2());
                 rat.restart();
             }
             window.draw(bg);
@@ -130,7 +134,6 @@ int main()
                 seals[i].check();
                 seals[i].draw(window);
             }
-
             window.display();
         }
 
