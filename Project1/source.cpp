@@ -4,27 +4,25 @@
 #include<iostream>
 #include<algorithm>
 //#include <cstdlib>//если рандом не захочет работать
-#include <ctime>
+#include<ctime>
+#include<string>
+#include<map>
 using namespace sf;
 using namespace std;
 string globalState = "free";
+vector<pair<string, string>> allPassives = {{"Escape","turn start"}, {"Poison touch", "attack"}};
 int select = -1;
 int damaged = -1;
 //string turn = "us"; Данный код будет нужен, когда враги не будут болванками для избиения
 struct unit;
-struct passive_BASE {
+struct passive {
     int id;
-    virtual void triggering(unit&owner, vector<vector<string>>& battlefieldState, int targetx, int targety, vector<unit> zhertvi);
+    /*virtual void triggering(unit& owner, vector<vector<string>>& battlefieldState, int targetx, int targety, vector<unit> zhertvi);
     virtual void triggering(unit& owner, vector<vector<string>>& battlefieldState);
-    virtual void tick(unit& owner, vector<vector<string>>& battlefieldState);
-    bool operator==(passive_BASE& another) {
-        return id == another.id;
-    }
-    bool operator==(int& another) {
-        return id == another;
-    }
+    virtual void tick(unit& owner, vector<vector<string>>& battlefieldState);*/
 };
 struct active_ability;
+
 struct unit {
     Texture txtt;
     int hp;
@@ -45,7 +43,11 @@ struct unit {
 private:
     String type;
 public:
-    void setType(String dano) {
+    String getType() {
+        return type;
+    }
+    void setType(String& dano) {
+        type = dano;
         if (type == "friend") {
             txtt.loadFromFile("seal.jpg");
             txt.setScale(0.1, 0.1);
@@ -69,18 +71,23 @@ public:
         initiative = ini;
     }
 
+    
+    /*map<string, int> passives;
+    map<string, int> actives;*/
+
     //везде где i - id неплохо бы сделать дефолт размер равный колву статусов
     //vector<pair<bool, int>> applied_status = {};//i - id статуса
-    vector<int> status_duration = {};//-1, если статуса нет, иначе рил длительность, i - id
+    vector<int> qweStatus_duration = {};//-1, если статуса нет, иначе рил длительность, i - id
     vector<active_ability> actives;//это все кажется можно сделать сетами и это будет оптимальнее
     vector<bool> hasActiveById;
     vector<int> cooldowns;
+    
     vector<passive_BASE> statuses = {};//мб сделать глобальным тк мы эт не меняем, а меняем только duration
     vector<passive_BASE> passives_whenTurnStart_base = {};
     vector<passive_BASE> passives_whenTurnStart = {};
     vector<passive_BASE> passives_whenAttack_base = {};
     vector<passive_BASE> passives_whenAttack = {};
-
+    /*
     void turnStartPassives(vector<vector<string>>& battlefieldState) {
         for (int i = 0; i < passives_whenTurnStart.size(); i++) {
             passives_whenTurnStart[i].triggering(*this, battlefieldState);
@@ -91,20 +98,21 @@ public:
             passives_whenAttack[i].triggering(*this, battlefieldState, targetx, targety, zhertvi);
         }
     }
+    */
     void tick(vector<vector<string>>& battlefieldState) {
         for (int i = 0; i < cooldowns.size();i++) {
             if (cooldowns[i] > 0) {
                 cooldowns[i]--;
             }
         }
-        for (int i = 0; i < status_duration.size(); i++) {
-            if (status_duration[i] > 0) {
-                statuses[i].tick(*this, battlefieldState);
+        for (int i = 0; i < qweStatus_duration.size(); i++) {
+            if (qweStatus_duration[i] > 0) {
+               // statuses[i].tick(*this, battlefieldState);
             }
         }
     }
 
-
+    
 
     void takedmg(int tika, vector<vector<string>>& battlefieldState) {
         hp -= tika;
@@ -342,8 +350,8 @@ struct statBlock {
         tickdmg = tickdmgA;
         initiativeChange = initi;
     }
-};  
-struct passive: passive_BASE {
+}; 
+struct passive : passive_BASE {
     string type;
     int id;
     int time;
@@ -357,16 +365,18 @@ struct passive: passive_BASE {
     statBlock enemyStats;//для триггеринг
     statBlock friendStats;
 
-    bool operator==(int& another) {
-        return id == another;
-    }
-    bool operator==(const passive& another) {
-        return id == another.id;
-    }
-    bool operator==(passive& another) {
-        return id == another.id;
-    }
-
+    //bool operator==(int& another) {
+    //    return this->id == another;
+    //}
+    //const bool operator==(const passive& another) {
+    //    return this->id == another.id;
+    //}
+    //bool operator==(passive& another) {
+    //    return this->id == another.id;
+    //}
+    //bool operator==(passive_BASE& another) {
+    //    return this->id == another.id;
+    //}
 
     void triggering(unit& owner, vector<vector<string>>& battlefieldState, int targetx, int targety, vector<unit>& zhertvi) {
         if (condition(owner, battlefieldState) == true && time == 0 && type == "ability" && target=="area") {
@@ -375,11 +385,11 @@ struct passive: passive_BASE {
         }
         if (condition(owner, battlefieldState) == true && time == 0 && type == "ability" && target == "self") {
             for (int i = 0; i < effects_friends.size(); i++) {
-                if (owner.status_duration[effects_friends[i].id] == -1) {
-                    owner.status_duration[effects_friends[i].id] = time;
+                if (owner.qweStatus_duration[effects_friends[i].id] == -1) {
+                    owner.qweStatus_duration[effects_friends[i].id] = time;
                     effects_friends[i].apply(owner);
                 } else {
-                    owner.status_duration[effects_friends[i].id] += time;
+                    owner.qweStatus_duration[effects_friends[i].id] += time;
                 }
             }
             return;
@@ -389,17 +399,16 @@ struct passive: passive_BASE {
                 for (int i = 0; i < zhertvi.size(); i++) {
                     if (zhertvi[i].positionx == targetx && zhertvi[i].positiony == targety && zhertvi[i].alive==true) {
                         for (int j = 0; j < effects_enemy.size(); j++) {
-                            if (zhertvi[i].status_duration[effects_enemy[i].id] == -1) {
-                                zhertvi[i].status_duration[effects_enemy[i].id] = time;
+                            if (zhertvi[i].qweStatus_duration[effects_enemy[i].id] == -1) {
+                                zhertvi[i].qweStatus_duration[effects_enemy[i].id] = time;
                                 effects_enemy[i].apply(zhertvi[i]);
                             }
                             else {
-                                zhertvi[i].status_duration[effects_enemy[i].id] += time;
+                                zhertvi[i].qweStatus_duration[effects_enemy[i].id] += time;
                             }
                         }
                     }
                 }
-            
         }
     }
     void triggering(unit& owner, vector<vector<string>>& battlefieldState) {
@@ -409,12 +418,12 @@ struct passive: passive_BASE {
         }
         if (condition(owner, battlefieldState) == true && time == 0 && type == "ability" && target == "self") {
             for (int i = 0; i < effects_friends.size(); i++) {
-                if (owner.status_duration[effects_friends[i].id] == -1) {
-                    owner.status_duration[effects_friends[i].id] = time;
+                if (owner.qweStatus_duration[effects_friends[i].id] == -1) {
+                    owner.qweStatus_duration[effects_friends[i].id] = time;
                     effects_friends[i].apply(owner);
                 }
                 else {
-                    owner.status_duration[effects_friends[i].id] += time;
+                    owner.qweStatus_duration[effects_friends[i].id] += time;
                 }
             }
             return;
@@ -422,17 +431,17 @@ struct passive: passive_BASE {
     }
     void apply(unit& owner) {
         if (type == "status") {
-            if (owner.status_duration[id] == -1) {
+            if (owner.qweStatus_duration[id] == -1) {
                 friendStats.applyDelta(owner);
-                owner.status_duration[id] = time;
+                owner.qweStatus_duration[id] = time;
             } else {
-                owner.status_duration[id] += time;
+                owner.qweStatus_duration[id] += time;
             }
             return;
         }
         if (type == "ability") {
             friendStats.applyDelta(owner);
-            for (int i = 0; i < effects_friends.size(); i++) {
+            /*for (int i = 0; i < effects_friends.size(); i++) {
                 if (effects_friends[i].trigger == "attack") {
                     if (find(owner.passives_whenAttack.begin(), owner.passives_whenAttack.end(), effects_friends[i]) == owner.passives_whenAttack.end()) {
                         owner.passives_whenAttack.push_back(effects_friends[i]);
@@ -443,8 +452,8 @@ struct passive: passive_BASE {
                         owner.passives_whenTurnStart.push_back(effects_friends[i]);
                     }
                 }
-            }
-            return;
+            }*/
+                return;
         }
     }
     void disapply(unit& owner) {
@@ -453,22 +462,22 @@ struct passive: passive_BASE {
             return;
         }
         if (type == "ability") {
-            if (trigger == "attack") {
+            /*if (trigger == "attack") {
                 if (find(owner.passives_whenAttack.begin(), owner.passives_whenAttack.end(), *this) != owner.passives_whenAttack.end()) {
                     owner.passives_whenAttack.erase(find(owner.passives_whenAttack.begin(), owner.passives_whenAttack.end(), *this));
                 }
             }
             if (trigger == "turn start" && find(owner.passives_whenTurnStart.begin(), owner.passives_whenTurnStart.end(), *this) != owner.passives_whenTurnStart.end()) {
                 owner.passives_whenTurnStart.erase(find(owner.passives_whenTurnStart.begin(), owner.passives_whenTurnStart.end(), *this));
-            }
+            }*/
             return;
         }
     }
     void tick(unit& owner, vector<vector<string>>& battlefieldState) {
         if (type == "status") {
             friendStats.tick(owner, battlefieldState);
-            owner.status_duration[id]--;
-            if (owner.status_duration[id] == 0) {
+            owner.qweStatus_duration[id]--;
+            if (owner.qweStatus_duration[id] == 0) {
                 this->disapply(owner);
             }
             return;
@@ -484,12 +493,12 @@ struct active_ability {
     vector<passive> addedStatus = {};
     int hpChange;
     bool isBarrier = false;
-    bool operator==(active_ability& another) {
-        return id == another.id;
-    }
-    bool operator==(int& another) {
-        return id == another;
-    }
+    //bool operator==(active_ability& another) {
+    //    return id == another.id;
+    //}
+    //bool operator==(int& another) {
+    //    return id == another;
+    //}
     void activate(unit& owner, vector<vector<string>>& battlefieldState, vector<unit>& they, vector<unit>& us, int targety, int targetx) {
         if (target == "earth" && (targety - owner.positiony) * (targety - owner.positiony) + (targetx - owner.positionx) * (targetx - owner.positionx) <= range * range) {
             for (int y = max(0, targety - area); y < min(5, targety + area); y++) {
@@ -510,6 +519,8 @@ struct active_ability {
     }
 };
 
+
+
 //passives can triggered: when take damage, deal damage, move, start turn, end turn, get attacked, attack
 /*
 all stats are :
@@ -529,14 +540,14 @@ int main()
     poison touch (отравление на 3 хода, в каждый ход получает по 1 урону)
     RUNRUNRUN (ms+2 если рядом со врагом)
     */
-    active_ability fireball;
+   /* active_ability fireball;
     fireball.range = 4;
     fireball.addedStatus = {};
     fireball.removedStatus = {};
     fireball.target = "earth";
     fireball.hpChange = 4;
     fireball.area = 1;
-    fireball.id = 1;
+    fireball.id = 1;*/
     /*status poisoned;
     poisoned.id = 1;
     poisoned.hpchange = 1;
@@ -631,7 +642,8 @@ int main()
         cout << " enter hp, movespeed, damage, position x, position y and initiative of your "<<i+1<<"st unit"<<endl;
         cin >> hpin >> msin >> dmgin >> posxin >> posyin >> inin;
         unit scytheofvyse(hpin, msin, dmgin, posxin-1, posyin-1,inin);
-        scytheofvyse.setType("friend");
+        String mysticStaff = "friend";
+        scytheofvyse.setType(mysticStaff);
         battlefieldState[posyin-1][posxin-1] = "friend";
         us.push_back(scytheofvyse);
     }
@@ -642,7 +654,8 @@ int main()
         cout << " enter hp, movespeed, damage, position x, position y and initiative of enemy " << i + 1 << "st unit" << endl;
         cin >> hpin >> msin >> dmgin >> posxin >> posyin >> inin;
         unit scytheofvyse(hpin, msin, dmgin, posxin - 1, posyin - 1, inin);
-        scytheofvyse.setType("enemy");
+        String mysticStaff = "enemy";
+        scytheofvyse.setType(mysticStaff);
         battlefieldState[posyin - 1][posxin - 1] = "enemy";
         they.push_back(scytheofvyse);
     }
@@ -696,11 +709,15 @@ int main()
             }
         }*/
         for (int i = 0; i < us.size(); i++) {
-            us[i].turnStartPassives(battlefieldState);
+            //us[i].turnStartPassives(battlefieldState);
+            for (int i = 0; i < allPassives.size(); i++) {
+
+            }
         }
         for (int i = 0; i < they.size(); i++) {
-            they[i].turnStartPassives(battlefieldState);
+            //they[i].turnStartPassives(battlefieldState);
         }
+
 
         for (int i = 0; i < they.size(); i++) {
             if (globalState == "free" &&they[i].alive==true && select != -1 && Mouse::isButtonPressed(Mouse::Left) && battlefield[they[i].positiony][they[i].positionx].getGlobalBounds().contains(Mouse::getPosition().x, Mouse::getPosition().y)) {
@@ -727,14 +744,14 @@ int main()
             }
             else if (damaged != -1 && select != -1 && globalState == "damage" && rattle.getElapsedTime().asMilliseconds() >= 10) {
                 us[select].attack(they[damaged], battlefieldState);
-                us[select].attackPassives(battlefieldState, they[damaged].positionx, they[damaged].positiony, they);
+                //us[select].attackPassives(battlefieldState, they[damaged].positionx, they[damaged].positiony, they);
                 rattle.restart();
             }
            /* else if (damaged != -1 && select != -1 && globalState == "damage") {
                 they[damaged].takedmg(us[select].dmg, battlefieldState);
                 globalState = "free";
                 damaged = -1;
-                select = -1;я
+                select = -1;
             }*/
         }
         for (int i = 0; i < 6; i++) {
