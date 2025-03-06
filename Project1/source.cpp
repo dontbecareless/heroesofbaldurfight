@@ -119,6 +119,7 @@ public:
         activeButton.setFillColor(Color::Blue);
         activeButton.setPosition(Vector2f(1615.f, 925.f));
         Status_duration = { -1,-1,-1,-1, -1, -1 };
+        hpMax = hp;
     }
 
     
@@ -407,11 +408,11 @@ void statBlock::disapplyDelta(unit& owner) {
 
         void passive::triggering (unit& owner, vector<vector<string>>& battlefieldState, int targetx, int targety, vector<unit>& zhertvi) {
             bool possible = condition(owner, battlefieldState);
-                    if (possible && time == 0 && type == "ability" && target=="area") {
+                    if (possible && type == "ability" && target=="area") {
                         //тут будет срабатывание на всех в области, но я ленивый (пока что)
                         return;
                     }
-                    if (possible && time == 0 && type == "ability" && target == "self") {
+                    if (possible && type == "ability" && target == "self") {
                         for (int i = 0; i < effects_friends.size(); i++) {
                             if (owner.Status_duration[effects_friends[i].id] == -1) {
                                 owner.Status_duration[effects_friends[i].id] = time;
@@ -422,13 +423,12 @@ void statBlock::disapplyDelta(unit& owner) {
                         }
                         return;
                     }
-                    if (possible && time == 0 && type == "ability" && target == "attacked") {
+                    if (possible && type == "ability" && target == "attacked") {
             
                             for (int i = 0; i < zhertvi.size(); i++) {
                                 if (zhertvi[i].positionx == targetx && zhertvi[i].positiony == targety && zhertvi[i].alive==true) {
                                     for (int j = 0; j < effects_enemy.size(); j++) {
                                         if (zhertvi[i].Status_duration[effects_enemy[i].id] == -1) {
-                                            zhertvi[i].Status_duration[effects_enemy[i].id] = time;
                                             effects_enemy[i].apply(zhertvi[i]);
                                         }
                                         else {
@@ -567,15 +567,18 @@ int main()
     fireball.hpChange = 4;
     fireball.area = 1;
     fireball.id = 0;
+    statBlock URPOISONED;
+    URPOISONED.tickdmg = 1;
     passive poisoned;
     poisoned.type = "status";
     poisoned.id = 0;
-    poisoned.dmg = 1;
+    poisoned.dmg = 0;
     poisoned.time = 3;
+    poisoned.friendStats = URPOISONED;
     passive poison_touch;
     poison_touch.id = 1;
     poison_touch.trigger = "attack";
-    poison_touch.target = "enemy";
+    poison_touch.target = "attacked";
     poison_touch.effects_enemy.push_back(poisoned);
     poison_touch.type = "ability";
     passive running;
@@ -585,6 +588,7 @@ int main()
     statBlock runningStats;
     runningStats.msChange = 2;
     running.friendStats = runningStats;
+    runningStats.tickdmg = 0;
     passive runrunrun; ;
     runrunrun.condition = isEnemyNear;
     runrunrun.id = 3;
@@ -596,8 +600,13 @@ int main()
     vector<passive> statuses = { poisoned, poison_touch, running, runrunrun };
     //неработает нафиг триггеринги твои (а вот кондиции ок)
     
-
-
+    //СДЕЛАНЫ + ОТЛАЖЕНЫ (пока только на тиммейтах):
+    //runrunrun
+    //runnung
+    //runningStats
+    /*poisoned
+    poison_touch
+    URPOISONED*/
 
 
 
@@ -685,11 +694,11 @@ int main()
     String mysticStaff = "friend";
     scytheofvyse.setType(mysticStaff);
     battlefieldState[0][0] = "friend";
-    scytheofvyse.passives_whenTurnStart.push_back(runrunrun);
+    scytheofvyse.passives_whenAttack.push_back(poison_touch);
     scytheofvyse.statuses = statuses;
     us.push_back(scytheofvyse);
 
-    scytheofvyse = unit(2, 2, 1, 1, 1, 1);
+    scytheofvyse = unit(4, 2, 1, 1, 1, 1);
     mysticStaff = "enemy";
     scytheofvyse.setType(mysticStaff);
     battlefieldState[1][1] = "enemy";
@@ -715,6 +724,9 @@ int main()
         if (select == -1) {
             for (size_t i = 0; i < us.size(); i++) {
                 us[i].tick(battlefieldState);
+            }
+            for (size_t i = 0; i < they.size(); i++) {
+                they[i].tick(battlefieldState);
             }
             while (select == -1) {
                 if (pointer_they >= they.size() && pointer_us >= us.size()) {
@@ -827,10 +839,11 @@ int main()
         }
         for (int i = 0; i < us.size(); i++) {
             us[i].draw(window);
-            cout << us[i].alive << endl;;
+            /*cout << us[i].alive << endl;*/
         }
         for (int i = 0; i < they.size(); i++) {
                 they[i].draw(window);
+                cout << they[i].hp <<' ' <<they[i].alive<< endl;
         }
         window.display();
     }
