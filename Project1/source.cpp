@@ -13,6 +13,8 @@ string globalState = "free";
 vector<pair<string, string>> allPassives = { {"poisoned","status"}, {"Poison touch", "attack"}, {"running", "status"}, {"runrunrun", "turn start"}};
 int select = -1;
 int damaged = -1;
+int nowtargetx = -1;
+int nowtargety = -1;
 //string turn = "us"; Данный код будет нужен, когда враги не будут болванками для избиения
 struct unit;
 struct statBlock {
@@ -65,7 +67,7 @@ struct passive {
 struct active_ability;
 struct unit {
     bool hasActive = false;
-
+    int active;
     Texture txtt;
     int hp;
     int ms;
@@ -82,7 +84,13 @@ struct unit {
     int hpMax;
     bool hasUnappliedStatus = false;
     Sprite txt;
+    int defaultActiveCooldown;
 
+
+
+    int iters;
+    int stepMoveX;
+    int stepMoveY;
 
     RectangleShape activeButton;
 private:
@@ -120,6 +128,10 @@ public:
         activeButton.setPosition(Vector2f(1615.f, 925.f));
         Status_duration = { -1,-1,-1,-1, -1, -1 };
         hpMax = hp;
+        hasActive = false;
+        active = -1;
+        defaultActiveCooldown = -1;
+        cooldown = 0;
     }
 
     
@@ -129,9 +141,7 @@ public:
     //везде где i - id неплохо бы сделать дефолт размер равный колву статусов
     //vector<pair<bool, int>> applied_status = {};//i - id статуса
     
-    vector<active_ability> actives;//это все кажется можно сделать сетами и это будет оптимальнее
-    vector<bool> hasActiveById;
-    vector<int> cooldowns;
+    int cooldown;
     
     vector<passive> statuses = {};//мб сделать глобальным тк мы эт не меняем, а меняем только duration
     vector<passive> passives_whenTurnStart_base = {};
@@ -150,16 +160,18 @@ public:
     }
     
     void tick(vector<vector<string>>& battlefieldState) {
-        for (int i = 0; i < cooldowns.size();i++) {
-            if (cooldowns[i] > 0) {
-                cooldowns[i]--;
-            }
+        if (cooldown > 0) {
+            cooldown--;
         }
         for (int i = 0; i < Status_duration.size(); i++) {
             if (Status_duration[i] >= 0) {
                 statuses[i].tick(*this, battlefieldState);
             }
         }
+    }
+
+    void useActive() {
+        globalState = "active ability";
     }
 
     
@@ -199,7 +211,16 @@ public:
         if (alive == true) {
             txt.setTexture(txtt);
             wind.draw(txt);
-            if (hasActive) {
+            if (hasActive && globalState == "free") {
+                if (cooldown == 0) {
+                    activeButton.setFillColor(Color::White);   
+                } else {
+                    activeButton.setFillColor(Color::Black);
+                }
+                wind.draw(activeButton);
+            }
+            if (hasActive && globalState == "active ability") {
+                activeButton.setFillColor(Color::Cyan);
                 wind.draw(activeButton);
             }
         }
@@ -503,7 +524,51 @@ void statBlock::disapplyDelta(unit& owner) {
                         return;
                     }
                 }
+       struct particle {
+           RectangleShape txt;
+           int startSize;
+           int endSize;
+           int nowmovex;
+           int nowmovey;
+           int stepSize;
+           int numberOfIterations;
+
+           int stepMoveX;
+           int stepMoveY;
+           int iters;
+
+           void draw(int targetx, int targety, vector<unit>& us) {
+               globalState = "particle flying";
+               nowmovex = (targetx - us[select].positionx - 1) * 150.f;
+               nowmovey = (targety - us[select].positiony - 1) * 150.f;
+               if (nowmovex != 0) {
+                   nowmovex -= 30.f;
+               }
+               if (nowmovey != 0) {
+                   nowmovey -= 50.f;
+               }
+               iters = max(abs(nowmovex) / 16, abs(nowmovey) / 23);
+               stepSize = (endSize - startSize) / iters;
+               stepMoveX = nowmovex / iters;
+               stepMoveY = nowmovey / iters;
+               txt.setSize(Vector2f(startSize, startSize));
+               txt.setOrigin(Vector2f(startSize / 2, startSize / 2));
+               txt.setPosition(us[select].txt.getPosition());
+               nowmovex = abs(nowmovex);
+               nowmovey = abs(nowmovey);
+           }
+           void draw() {
+               txt.move(stepMoveX, stepMoveY);
+               iters--;
+               if (iters == 0) {
+                   globalState = "activating active";
+               }
+               txt.setSize(txt.getSize() + Vector2f(stepSize, stepSize));
+
+           }
+       };
 struct active_ability {
+    particle txt;
     int id;
     int range;
     int area;//радиус от клетки таргета (те для три на три area = 1)
@@ -518,22 +583,31 @@ struct active_ability {
     bool operator==(int& another) {
         return id == another;
     }
-    void activate(unit& owner, vector<vector<string>>& battlefieldState, vector<unit>& they, vector<unit>& us, int targety, int targetx) {
-        if (target == "earth" && (targety - owner.positiony) * (targety - owner.positiony) + (targetx - owner.positionx) * (targetx - owner.positionx) <= range * range) {
-            for (int y = max(0, targety - area); y < min(5, targety + area); y++) {
-                for (int x = max(0, targetx - area); x < min(10, targetx + area); x++) {
-                    for (int i = 0; i < they.size(); i++) {
-                        if (they[i].alive == true && they[i].positionx == x && they[i].positiony == y) {
-                            they[i].takedmg(hpChange, battlefieldState, isBarrier);
+    void activate(int targetx, int targety, vector<unit>& us) {
+            txt.draw(targetx, targety, us);
+            nowtargetx = targetx;
+            nowtargety = targety;
+    }
+    void activate(unit& owner, vector<vector<string>>& battlefieldState, vector<unit>& they, vector<unit>& us) {
+            if (target == "earth" && (nowtargety - owner.positiony) * (nowtargety - owner.positiony) + (nowtargetx - owner.positionx) * (nowtargetx - owner.positionx) <= range * range) {
+                for (int y = max(0, nowtargety - area); y < min(5, nowtargety + area); y++) {
+                    for (int x = max(0, nowtargetx - area); x < min(10, nowtargetx + area); x++) {
+                        for (int i = 0; i < they.size(); i++) {
+                            if (they[i].alive == true && they[i].positionx == x && they[i].positiony == y) {
+                                they[i].takedmg(hpChange, battlefieldState, isBarrier);
+                            }
                         }
-                    }
-                    for (int i = 0; i < us.size(); i++) {
-                        if (us[i].alive == true && us[i].positionx == x && us[i].positiony == y) {
-                            us[i].takedmg(hpChange, battlefieldState, isBarrier);
+                        for (int i = 0; i < us.size(); i++) {
+                            if (us[i].alive == true && us[i].positionx == x && us[i].positiony == y) {
+                                us[i].takedmg(hpChange, battlefieldState, isBarrier);
+                            }
                         }
                     }
                 }
-            }
+                nowtargetx = -1;
+                nowtargety = -1;
+                select = -1;
+                globalState = "free";
         }
     }
 };
@@ -559,8 +633,14 @@ int main()
     poison touch (отравление на 3 хода, в каждый ход получает по 1 урону)
     RUNRUNRUN (ms+2 если рядом со врагом)
     */
+    particle ballOfFire;
+    ballOfFire.startSize = 1;
+    ballOfFire.endSize = 450;
+    ballOfFire.txt = RectangleShape();
+    ballOfFire.txt.setFillColor(Color::Yellow);
     active_ability fireball;
-    fireball.range = 4;
+    fireball.txt = ballOfFire;
+    fireball.range = 5;
     fireball.addedStatus = {};
     fireball.removedStatus = {};
     fireball.target = "earth";
@@ -598,6 +678,7 @@ int main()
     runrunrun.target = "self";
     runrunrun.time = 1;
     vector<passive> statuses = { poisoned, poison_touch, running, runrunrun };
+    vector<active_ability> actives = { fireball };
     //неработает нафиг триггеринги твои (а вот кондиции ок)
     
     //СДЕЛАНЫ + ОТЛАЖЕНЫ (пока только на тиммейтах):
@@ -696,6 +777,9 @@ int main()
     battlefieldState[0][0] = "friend";
     scytheofvyse.passives_whenAttack.push_back(poison_touch);
     scytheofvyse.statuses = statuses;
+    scytheofvyse.hasActive = true;
+    scytheofvyse.active = 0;
+    scytheofvyse.defaultActiveCooldown = 3;
     us.push_back(scytheofvyse);
 
     scytheofvyse = unit(4, 2, 1, 1, 1, 1);
@@ -720,6 +804,21 @@ int main()
                 window.close();
             }
         }
+        bool allEnemyAreDead = true;
+        bool allFriendsAreDead = true;
+        for (size_t i = 0; i < us.size(); i++) {
+            if (us[i].alive) {
+                allFriendsAreDead = false;
+            }
+        }
+        for (size_t i = 0; i < they.size(); i++) {
+            if (they[i].alive) {
+               allEnemyAreDead = false;
+            }
+        }
+        if (allEnemyAreDead && allFriendsAreDead) {
+            window.close();
+        }
         window.draw(bg);
         if (select == -1) {
             for (size_t i = 0; i < us.size(); i++) {
@@ -734,7 +833,9 @@ int main()
                     pointer_us = 0;
                 }
                 else if (pointer_they >= they.size() && pointer_us < us.size()) {
-                    select = pointer_us;
+                    if (us[pointer_us].alive) {
+                        select = pointer_us;
+                    }
                     /*for (int i = 0; i < us.size(); i++) {
                         us[i].turnStartPassives(battlefieldState);
                     }*/
@@ -748,7 +849,9 @@ int main()
                     select = pointer_they;                      Данный код будет нужен, когда враги не будут болванками для избиения
                 }*/
                 else if (they[pointer_they] <= us[pointer_us]) {
-                    select = pointer_us;
+                    if (us[pointer_us].alive) {
+                        select = pointer_us;
+                    }
                     pointer_us++;
                 }
                 else {
@@ -820,7 +923,28 @@ int main()
                     
             }
         }
-
+        if (select != -1 && us[select].hasActive && us[select].activeButton.getGlobalBounds().contains(Mouse::getPosition().x, Mouse::getPosition().y) && Mouse::isButtonPressed(Mouse::Left) && globalState == "free" && rattle.getElapsedTime().asMilliseconds() >= 500 && us[select].cooldown == 0) {
+            us[select].useActive();
+            for (int i = 0; i < 6; i++) {
+                for (int j = 0; j < 11; j++) {
+                    battlefield[i][j].setFillColor(Color::Transparent);
+                }
+            }
+            us[select].cooldown = us[select].defaultActiveCooldown;
+            rattle.restart();
+        }
+        if (select != -1 && us[select].hasActive && us[select].activeButton.getGlobalBounds().contains(Mouse::getPosition().x, Mouse::getPosition().y) && Mouse::isButtonPressed(Mouse::Left) && globalState == "active ability" && rattle.getElapsedTime().asMilliseconds() >= 500) {
+            globalState = "free";
+            rattle.restart();
+            us[select].cooldown = 0;
+        }
+        if (globalState == "particle flying" && rattle.getElapsedTime().asMilliseconds()>=50) {
+            actives[us[select].active].txt.draw();
+            rattle.restart();
+        }
+        if (globalState == "activating active" && nowtargetx != -1 && nowtargety != -1) {
+            actives[us[select].active].activate(us[select], battlefieldState, they, us);
+        }
         for (int i = 0; i < 6; i++) {
             for (int j = 0; j < 11; j++) {
                 if (select != -1 && globalState == "free") {
@@ -833,9 +957,41 @@ int main()
                     else {
                         battlefield[i][j].setFillColor(Color::Transparent);
                     }
-                }
+                } else {
+                    if (globalState == "active ability" && select != -1) {
+                        if (battlefield[i][j].getGlobalBounds().contains(Mouse::getPosition().x, Mouse::getPosition().y) && (us[select].positionx - j) * (us[select].positionx - j) + (us[select].positiony - i) * (us[select].positiony - i) <= actives[us[select].active].range * actives[us[select].active].range) {
+                            battlefield[i][j].setFillColor(Color(255, 0, 0, 100));
+                            int minx = max(0, j - actives[us[select].active].area);
+                            int miny = max(0, i - actives[us[select].active].area);
+                            int maxx = min(10, j + actives[us[select].active].area);
+                            int maxy = min(5, i +  actives[us[select].active].area);
+                            for (int inow = 0; inow < 6; inow++) {
+                                for (int jnow = 0; jnow < 11; jnow++) {
+                                    if (inow<miny || inow>maxy || jnow<minx || jnow>maxx) {
+                                        battlefield[inow][jnow].setFillColor(Color::Transparent);
+                                    } else {
+                                        battlefield[inow][jnow].setFillColor(Color(255, 0, 0, 100));
+                                    }
+                                }
+                            }
+                            if (Mouse::isButtonPressed(Mouse::Left)) {
+                                actives[us[select].active].activate(j, i, us);
+                                rattle.restart();
+                            }
+                        } else if (battlefield[i][j].getGlobalBounds().contains(Mouse::getPosition().x, Mouse::getPosition().y) && (us[select].positionx - j) * (us[select].positionx - j) + (us[select].positiony - i) * (us[select].positiony - i) > actives[us[select].active].range * actives[us[select].active].range){
+                            for (int inow = 0; inow < 6; inow++) {
+                                for (int jnow = 0; jnow < 11; jnow++) {
+                                    battlefield[inow][jnow].setFillColor(Color::Transparent);
+                                }
+                            }
+                        }
+                    }
+                } 
                 window.draw(battlefield[i][j]);
             }
+        }
+        if (globalState == "particle flying") {
+            window.draw(actives[us[select].active].txt.txt);
         }
         for (int i = 0; i < us.size(); i++) {
             us[i].draw(window);
@@ -843,7 +999,6 @@ int main()
         }
         for (int i = 0; i < they.size(); i++) {
                 they[i].draw(window);
-                cout << they[i].hp <<' ' <<they[i].alive<< endl;
         }
         window.display();
     }
