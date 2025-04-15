@@ -8,12 +8,12 @@
 #include<string>
 #include<cstring>
 #include<map>
-
+//ÌÛÊÌÓ .h Ë .cpp Ù‡ÈÎ˚ ‰ÂÎ‡Ú¸
 using namespace sf;
 using namespace std;
 
 
-enum class PGS { free, active_ability, animation, damage, particle_flying, activating_active};
+enum class PGS { free, active_ability, animation, damage, particle_flying, activating_active, dealing_damage};
 //PGS = Possible Global States, but i am too lazy to write it every time
 
 PGS globalState = PGS::free;
@@ -89,9 +89,11 @@ struct Particle {
 	int stepMoveX;
 	int stepMoveY;
 	int iters;
+	int deltaX;
+	int deltaY;
 
 	void draw(int targetx, int targety, vector<Unit>& us);
-	void draw();
+	void draw(bool isActive);
 };
 
 struct Unit {
@@ -299,29 +301,48 @@ public:
 	}
 	void attack(int dx, int dy) {
 		globalState = PGS::damage;
-		nowmovex = dx * 150.f;
-		nowmovey = dy * 150.f;
-		iters = max(abs(nowmovex) / 15, abs(nowmovey) / 15);
-		if (iters != 0) {
-			stepMoveX = nowmovex / iters;
-			stepMoveY = nowmovey / iters;
+		if (!isRangeUnit) {
+			nowmovex = dx * 150.f;
+			nowmovey = dy * 150.f;
+			iters = max(abs(nowmovex) / 15, abs(nowmovey) / 15);
+			if (iters != 0) {
+				stepMoveX = nowmovex / iters;
+				stepMoveY = nowmovey / iters;
+			}
+			else {
+				stepMoveX = 0;
+				stepMoveY = 0;
+			}
+			positionx += dx;
+			positiony += dy;
+		} else {
+			if (nowBotTurn) {
+				bullet.draw(positionx + dx, positiony + dy, they);
+			} else {
+				bullet.draw(positionx + dx, positiony + dy, us);
+			}
 		}
-		else {
-			stepMoveX = 0;
-			stepMoveY = 0;
-		}
-		positionx += dx;
-		positiony += dy;
 	}
 	void attack(Unit& zhertva, vector<Unit>& attackers, vector<Unit>& zhertvi) {
-		iters--;
-		txt.move(stepMoveX, stepMoveY);
-		if (iters <= 0) {
-			attackers[select].attackPassives(zhertvi[damaged].positionx, zhertvi[damaged].positiony, zhertvi);
-			zhertva.takedmg(dmg);
-			damaged = -1;
-			select = -1;
-			globalState = PGS::free;
+		if (!isRangeUnit) {
+			iters--;
+			txt.move(stepMoveX, stepMoveY);
+			if (iters <= 0) {
+				attackers[select].attackPassives(zhertvi[damaged].positionx, zhertvi[damaged].positiony, zhertvi);
+				zhertva.takedmg(dmg);
+				damaged = -1;
+				select = -1;
+				globalState = PGS::free;
+			}
+		} else {
+			bullet.draw(false);
+			if (globalState == PGS::dealing_damage) {
+				attackers[select].attackPassives(zhertvi[damaged].positionx, zhertvi[damaged].positiony, zhertvi);
+				zhertva.takedmg(dmg);
+				damaged = -1;
+				select = -1;
+				globalState = PGS::free;
+			}
 		}
 	}
 };
@@ -459,21 +480,16 @@ void Passive::apply(Unit& owner) {
 void Passive::tick(Unit& owner) {
 	if (type == "status") {
 		friendStats.tick(owner, id);
-
 		return;
 	}
 }
 
 void Particle::draw(int targetx, int targety, vector<Unit>& us) {
 	globalState = PGS::particle_flying;
-	nowmovex = (targetx - us[select].positionx - 1) * 150.f;
-	nowmovey = (targety - us[select].positiony - 1) * 150.f;
-	if (nowmovex != 0) {
-		nowmovex -= 30.f;
-	}
-	if (nowmovey != 0) {
-		nowmovey -= 50.f;
-	}
+	nowmovex = (targetx - us[select].positionx) * 150.f;
+	nowmovey = (targety - us[select].positiony) * 150.f;
+	nowmovex += deltaX;
+	nowmovey += deltaY;
 	iters = max(abs(nowmovex) / 15, abs(nowmovey) / 25);
 	stepSize = (endSize - startSize) / iters;
 	stepMoveX = nowmovex / iters;
@@ -482,11 +498,15 @@ void Particle::draw(int targetx, int targety, vector<Unit>& us) {
 	txt.setOrigin(Vector2f(startSize / 2, startSize / 2));
 	txt.setPosition(us[select].txt.getPosition());
 }
-void Particle::draw() {
+void Particle::draw(bool isActive) {
 	txt.move(stepMoveX, stepMoveY);
 	iters--;
 	if (iters == 0) {
-		globalState = PGS::activating_active;
+		if (isActive) {
+			globalState = PGS::activating_active;
+		} else {
+			globalState = PGS::dealing_damage;
+		}
 	}
 	txt.setSize(txt.getSize() + Vector2f(stepSize, stepSize));
 }
@@ -583,7 +603,12 @@ void activateTurnStartOfSelected() {
 	}
 }
 bool usAttackCondition(int i, vector<vector<RectangleShape>>& battlefield) {
-	bool inRange = pythagor(they[i].positiony - us[select].positiony, they[i].positionx - us[select].positionx) <= sqr(us[select].ms + 1);
+	bool inRange;
+	if (!us[select].isRangeUnit) {
+		inRange = pythagor(they[i].positiony - us[select].positiony, they[i].positionx - us[select].positionx) <= sqr(us[select].ms + 1);
+	} else {
+		inRange = pythagor(they[i].positiony - us[select].positiony, they[i].positionx - us[select].positionx) <= sqr(us[select].attackRange);
+	}
 	bool buttonPressed = contMouse(battlefield[they[i].positiony][they[i].positionx]);
 	return inRange && buttonPressed;
 }
@@ -629,11 +654,13 @@ void usPossibleActions(Clock& rattle, vector<vector<RectangleShape>>& battlefiel
 	}
 	for (int i = 0; i < they.size(); i++) {
 		if (usAttackCondition(i,  battlefield)) {
-			battlefieldState[us[select].positiony][us[select].positionx] = "free";
 			int targetx = they[i].positionx - us[select].positionx;
 			int targety = they[i].positiony - us[select].positiony;
-			usChoosePositionToAttack(targetx, targety, i);
-			battlefieldState[us[select].positiony + targety][us[select].positionx + targetx] = "friend";
+			if (!us[select].isRangeUnit) {
+				battlefieldState[us[select].positiony][us[select].positionx] = "free";
+				usChoosePositionToAttack(targetx, targety, i);
+				battlefieldState[us[select].positiony + targety][us[select].positionx + targetx] = "friend";
+			}
 			us[select].attack(targetx, targety);
 			damaged = i;
 			rattle.restart();
@@ -669,7 +696,7 @@ bool cancelAbilityCondition(Clock& rattle) {
 	return select != -1 && us[select].hasActive && contMouse(us[select].activeButton) && Mouse::isButtonPressed(Mouse::Left) && globalState == PGS::active_ability && rattle.getElapsedTime().asMilliseconds() >= 500;
 }
 bool continueParticleAnimationCondition(Clock& rattle) {
-	return globalState == PGS::particle_flying && rattle.getElapsedTime().asMilliseconds() >= 10;
+	return globalState == PGS::particle_flying && rattle.getElapsedTime().asMilliseconds() >= 10 && damaged == -1;
 }
 bool activatingActiveCondition() {
 	return globalState == PGS::activating_active && nowtargetx != -1 && nowtargety != -1;
@@ -702,7 +729,9 @@ bool legalActiveTarget(vector<vector<RectangleShape>>& battlefield, Clock& rattl
 void paintBattlefieldWithMoveRange(vector<vector<RectangleShape>>& battlefield, int i, int j) {
 	if (pythagor(i - us[select].positiony, j - us[select].positionx) <= sqr(us[select].ms)) {
 		battlefield[i][j].setFillColor(Color(0, 255, 0, 100));
-	} else if (battlefieldState[i][j] == "enemy" && pythagor(i - us[select].positiony, j - us[select].positionx) <= sqr(us[select].ms) + 1) {
+	} else if (!us[select].isRangeUnit && battlefieldState[i][j] == "enemy" && pythagor(i - us[select].positiony, j - us[select].positionx) <= sqr(us[select].ms) + 1) {
+		battlefield[i][j].setFillColor(Color(0, 255, 0, 100));
+	} else if (us[select].isRangeUnit && battlefieldState[i][j] == "enemy" && pythagor(i - us[select].positiony, j - us[select].positionx) <= sqr(us[select].attackRange)) {
 		battlefield[i][j].setFillColor(Color(0, 255, 0, 100));
 	} else {
 		battlefield[i][j].setFillColor(Color::Transparent);
@@ -795,6 +824,9 @@ bool hasTarget(int targetx, int targety) {
 void aiFindTargetToAttack(int& targetx, int& targety, int i) {
 	targetx = us[i].positionx - they[select].positionx;
 	targety = us[i].positiony - they[select].positiony;
+	if (they[select].isRangeUnit) {
+		return;
+	}
 	if (us[i].positionx > they[select].positionx) {
 		targetx--;
 	}
@@ -809,7 +841,10 @@ void aiFindTargetToAttack(int& targetx, int& targety, int i) {
 	}
 }
 bool aiCanAttackThis(int i) {
-	return us[i].alive && pythagor(us[i].positionx - they[select].positionx, us[i].positiony - they[select].positiony) <= sqr(they[select].ms);
+	if (!they[select].isRangeUnit) {
+		return us[i].alive && pythagor(us[i].positionx - they[select].positionx, us[i].positiony - they[select].positiony) <= sqr(they[select].ms);
+	}
+	return us[i].alive && pythagor(us[i].positionx - they[select].positionx, us[i].positiony - they[select].positiony) <= sqr(they[select].attackRange);
 }
 bool aiDestinationBusy(int dx, int dy) {
 	return battlefieldState[they[select].positiony + dy][they[select].positionx + dx] != "free";
@@ -855,10 +890,12 @@ void aiActions() {
 	}
 	for (size_t i = 0; i < us.size(); i++) {
 		if (aiCanAttackThis(i)) {
-			battlefieldState[they[select].positiony][they[select].positionx] = "free";
 			int targetx, targety;
 			aiFindTargetToAttack(targetx, targety, i);
-			battlefieldState[they[select].positiony + targety][they[select].positionx + targetx] = "enemy";
+			if (!they[select].isRangeUnit) {
+				battlefieldState[they[select].positiony][they[select].positionx] = "free";
+				battlefieldState[they[select].positiony + targety][they[select].positionx + targetx] = "enemy";
+			}
 			they[select].attack(targetx, targety);
 			damaged = i;
 			return;
@@ -887,6 +924,9 @@ void aiActions() {
 	nowtargety = -1;
 	return;
 }
+bool continueBulletAnimationCondition(Clock& rattle) {
+	return damaged != -1 && (globalState == PGS::particle_flying || globalState== PGS::dealing_damage) && rattle.getElapsedTime().asMilliseconds() >= 10; //mb select
+}
 void botTurn(Clock& rattle, vector<vector<RectangleShape>>& battlefield) {
 	if (!they[select].alive) {
 		select = -1;
@@ -898,8 +938,12 @@ void botTurn(Clock& rattle, vector<vector<RectangleShape>>& battlefield) {
 		they[select].move();
 		rattle.restart();
 	}
+	if (continueBulletAnimationCondition(rattle)) {
+		they[select].attack(us[damaged], they, us);
+		rattle.restart();
+	}
 	if (continueParticleAnimationCondition(rattle)) {
-		actives[they[select].active].txt.draw();
+		actives[they[select].active].txt.draw(true);
 		rattle.restart();
 	}
 	if (activatingActiveCondition()) {
@@ -932,7 +976,11 @@ void playerTurn(Clock& rattle, vector<vector<RectangleShape>>& battlefield, Rect
 		us[select].cooldown = 0;
 	}
 	if (continueParticleAnimationCondition(rattle)) {
-		actives[us[select].active].txt.draw();
+		actives[us[select].active].txt.draw(true);
+		rattle.restart();
+	}
+	if (continueBulletAnimationCondition(rattle)) {
+		us[select].attack(they[damaged], us, they);
 		rattle.restart();
 	}
 	if (activatingActiveCondition()) {
@@ -961,6 +1009,8 @@ int main()
 	skipTurnButton.setPosition(Vector2f(7.f, 925.f));
 	skipTurnButton.setFillColor(Color::White);
 	Particle ballOfFire;
+	ballOfFire.deltaX = -165;
+	ballOfFire.deltaY = -200;
 	ballOfFire.startSize = 1;
 	ballOfFire.endSize = 450;
 	ballOfFire.txt = RectangleShape();
@@ -1038,25 +1088,42 @@ int main()
 		}
 	}
 
-	//Õ¿ƒŒ —ƒ≈À¿“‹ –›Õ∆ ﬁÕ»“Œ¬
-	Unit scytheofvyse(2, 2, 1, 10, 5, 1);
+	Unit scytheofvyse(2, 2, 1, 1, 1, 1);
 	string mysticStaff = "friend";
 	scytheofvyse.setType(mysticStaff);
-	battlefieldState[5][10] = "friend";
+	battlefieldState[1][1] = "friend";
 	scytheofvyse.passives_whenAttack.push_back(poison_touch);
 	scytheofvyse.statuses = statuses;
 	scytheofvyse.hasActive = true;
 	scytheofvyse.active = 0;
 	scytheofvyse.defaultActiveCooldown = 3;
+	//scytheofvyse.isRangeUnit = true;
+	//scytheofvyse.attackRange = 5;
+	//Particle bul;
+	//bul.txt = RectangleShape();
+	//bul.txt.setFillColor(Color::Red);
+	//bul.startSize = 20;
+	//bul.endSize = 20;
+	//scytheofvyse.bullet = bul;
 	us.push_back(scytheofvyse);
 
-	scytheofvyse = Unit(4, 2, 1, 1, 1, 1);
+	scytheofvyse = Unit(4, 2, 0, 10, 5, 1);
 	mysticStaff = "enemy";
 	//scytheofvyse.hasActive = true;
 	//scytheofvyse.active = 0;
 	//scytheofvyse.defaultActiveCooldown = 3;
 	scytheofvyse.setType(mysticStaff);
-	battlefieldState[1][1] = "enemy";
+	scytheofvyse.isRangeUnit = true;
+	scytheofvyse.attackRange = 5;
+	Particle bul;
+	bul.deltaX = 30;
+	bul.deltaY = 30;
+	bul.txt = RectangleShape();
+	bul.txt.setFillColor(Color::Red);
+	bul.startSize = 20;
+	bul.endSize = 20;
+	scytheofvyse.bullet = bul;
+	battlefieldState[5][10] = "enemy";
 	scytheofvyse.statuses = statuses;
 	they.push_back(scytheofvyse);
 
@@ -1085,7 +1152,6 @@ int main()
 			activateTurnStartOfSelected();
 		}
 		if (nowBotTurn) {
-			//ostalos: ranges, better pathfinding
 			botTurn(rattle, battlefield);
 		} else {
 			playerTurn(rattle, battlefield, skipTurnButton);
@@ -1108,8 +1174,15 @@ int main()
 		for (int i = 0; i < they.size(); i++) {
 			they[i].draw(window);
 		}
-		if (globalState == PGS::particle_flying) {
+		if (globalState == PGS::particle_flying && damaged == -1) {
 			window.draw(actives[us[select].active].txt.txt);
+		}
+		if (globalState == PGS::particle_flying && damaged != -1) {
+			if (!nowBotTurn) {
+				window.draw(us[select].bullet.txt);
+			} else {
+				window.draw(they[select].bullet.txt);
+			}
 		}
 		window.draw(skipTurnButton);
 		window.display();
