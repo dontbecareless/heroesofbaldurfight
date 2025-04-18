@@ -7,15 +7,16 @@
 #include<ctime>
 #include<string>
 #include<cstring>
-#include<map>
+#include<deque>
 //нужно .h и .cpp файлы делать
 using namespace sf;
 using namespace std;
 
 
-enum class PGS { free, active_ability, animation, damage, particle_flying, activating_active, dealing_damage};
+enum class PGS { free, active_ability, animation, damage, particle_flying, activating_active, dealing_damage, running};
 //PGS = Possible Global States, but i am too lazy to write it every time
 
+deque<pair<int, int>> path;
 PGS globalState = PGS::free;
 vector<pair<string, string>> allPassives = { {"poisoned","status"}, {"Poison touch", "attack"}, {"running", "status"}, {"runrunrun", "turn start"} };
 int select = -1;
@@ -26,6 +27,8 @@ bool nowBotTurn = false;
 const int w = 11;
 const int h = 6;
 vector<vector<string>> battlefieldState(h, vector<string>(w, "free"));
+vector<vector<bool>> reachable(h, vector<bool>(w, false));
+vector<vector<bool>> was(h, vector<bool>(w, false));
 
 
 struct Unit;
@@ -96,6 +99,23 @@ struct Particle {
 	void draw(bool isActive);
 };
 
+void checkLeftTop(int i, int j, string& ok) {
+	if (i - 1 >= 0 && (battlefieldState[i][j] == "free" || battlefieldState[i ][j] == ok) && reachable[i - 1][j]) {
+		reachable[i][j] = true;
+	}
+	else if (j - 1 >= 0 && (battlefieldState[i][j] == "free" || battlefieldState[i][j] == ok) && reachable[i][j - 1]) {
+		reachable[i][j] = true;
+	}
+}
+void checkBottomRight(int i, int j, string& ok) {
+	if (i + 1 < h && (battlefieldState[i][j] == "free" || battlefieldState[i][j] == ok) && reachable[i + 1][j]) {
+		reachable[i][j] = true;
+	}
+	else if (j + 1 < w && (battlefieldState[i][j] == "free" || battlefieldState[i][j] == ok) && reachable[i][j + 1]) {
+		reachable[i][j] = true;
+	}
+}
+bool makePath(int& dx, int& dy, int posx, int posy);
 struct Unit {
 	bool isRangeUnit = false;
 	int attackRange;
@@ -276,7 +296,12 @@ public:
 		return initiative <= another.initiative;
 	}
 	void move(int dx, int dy) {
+		if (globalState != PGS::running) {
+			nowtargetx = positionx + dx;
+			nowtargety = positiony + dy;
+		}
 		globalState = PGS::animation;
+		makePath(dx, dy, positionx, positiony);
 		nowmovex = dx * 150.f;
 		nowmovey = dy * 150.f;
 		iters = max(abs(nowmovex) / 15, abs(nowmovey) / 15);
@@ -287,7 +312,7 @@ public:
 		else {
 			stepMoveX = 0;
 			stepMoveY = 0;
-		}
+		}	
 		positionx += dx;
 		positiony += dy;
 	}
@@ -295,8 +320,18 @@ public:
 		iters--;
 		txt.move(stepMoveX, stepMoveY);
 		if (iters <= 0) {
-			globalState = PGS::free;
-			select = -1;
+			globalState = PGS::running;
+			if (positionx == nowtargetx && positiony == nowtargety) {
+				globalState = PGS::free;
+				select = -1;
+				nowtargetx = -1;
+				nowtargety = -1;
+				if (!nowBotTurn) {
+					battlefieldState[positiony][positionx] = "friend";
+				} else {
+					battlefieldState[positiony][positionx] = "enemy";
+				}
+			}
 		}
 	}
 	void attack(int dx, int dy) {
@@ -347,6 +382,128 @@ public:
 	}
 };
 
+void buildReachable(string ok = "") {
+	for (int i = 0; i < h; i++) {
+		for (int j = 0; j < w; j++) {
+			reachable[i][j] = false;
+		}
+	}
+	Unit& obj = nowBotTurn ? they[select] : us[select];
+	int x = obj.positionx;
+	int y = obj.positiony;
+	reachable[y][x] = true;
+	for (int i = y; i < h; i++) {
+		for (int j = x; j < w; j++) {
+			checkLeftTop(i, j, ok);
+		}
+	}
+	for (int i = h - 1; i >= y; i--) {
+		for (int j = w - 1; j >= x; j--) {
+			checkBottomRight(i, j, ok);
+		}
+	}
+	for (int i = y; i >= 0; i--) {
+		for (int j = x; j < w; j++) {
+			checkLeftTop(i, j, ok);
+		}
+	}
+	for (int i = 0; i <= y; i++) {
+		for (int j = w - 1; j >= x; j--) {
+			checkBottomRight(i, j, ok);
+		}
+
+
+	}
+	for (int i = y; i >= 0; i--) {
+		for (int j = x; j >= 0; j--) {
+			checkBottomRight(i, j, ok);
+		}
+	}
+	for (int i = 0; i <= y; i++) {
+		for (int j = 0; j <= x; j++) {
+			checkLeftTop(i, j, ok);
+		}
+	}
+	for (int i = y; i < h; i++) {
+		for (int j = x; j >= 0; j--) {
+			checkBottomRight(i, j, ok);
+		}
+	}
+	for (int i = h - 1; i >= y; i--) {
+		for (int j = 0; j <= x; j++) {
+			checkLeftTop(i, j, ok);
+		}
+	}
+}
+bool makePath(int& dx, int& dy, int posx, int posy) {
+	if (path.empty()) {
+		for (int i = 0; i < h; i++) {
+			for (int j = 0; j < w; j++) {
+				was[i][j] = false;
+			}
+		}
+		buildReachable();
+		dx = 0;
+		dy = 0;
+		while (posx != nowtargetx || posy != nowtargety) {
+			was[posy][posx] = true;
+			if (nowtargetx > posx && posx + 1 < w && reachable[posy][posx + 1] && !was[posy][posx + 1]) {
+				path.push_back({ 1, 0 });
+				posx++;
+				continue;
+			}
+			if (nowtargetx < posx && posx - 1 >= 0 && reachable[posy][posx - 1] && !was[posy][posx - 1]) {
+				path.push_back({ -1, 0 });
+				posx--;
+				continue;
+			}
+			if (nowtargety > posy && posy + 1 < h && reachable[posy + 1][posx] && !was[posy + 1][posx]) {
+				path.push_back({ 0, 1 });
+				posy++;
+				continue;
+			}
+			if (nowtargety < posy && posy - 1 >= 0 && reachable[posy - 1][posx] && !was[posy - 1][posx]) {
+				path.push_back({ 0, -1 });
+				posy--;
+				continue;
+			}
+
+
+			if (posx + 1 < w && reachable[posy][posx + 1] && !was[posy][posx + 1]) {
+				path.push_back({ 1, 0 });
+				posx++;
+				continue;
+			}
+			if (posy + 1 < h && reachable[posy + 1][posx] && !was[posy + 1][posx]) {
+				path.push_back({ 0, 1 });
+				posy++;
+				continue;
+			}
+			if (posx - 1 >= 0 && reachable[posy][posx - 1] && !was[posy][posx - 1]) {
+				path.push_back({ -1, 0 });
+				posx--;
+				continue;
+			}
+			if (posy - 1 >= 0 && reachable[posy - 1][posx] && !was[posy - 1][posx]) {
+				path.push_back({ 0, -1 });
+				posy--;
+				continue;
+			}
+
+			posx -= path.back().first;
+			posy -= path.back().second;
+			path.pop_back();
+			if (was[posy][posx + 1] && was[posy][posx - 1] && was[posy + 1][posx] && was[posy - 1][posx]) {
+				return false;
+			}	
+		}
+		return true;
+	}
+	dx = path.back().first;
+	dy = path.back().second;
+	path.pop_back();
+	return true;
+}
 bool contMouse(RectangleShape& rect) {
 	return rect.getGlobalBounds().contains(Mouse::getPosition().x, Mouse::getPosition().y);
 }
@@ -613,7 +770,9 @@ bool usAttackCondition(int i, vector<vector<RectangleShape>>& battlefield) {
 	return inRange && buttonPressed;
 }
 bool moveCondition(vector<vector<RectangleShape>>& battlefield, int i, int j) {
-	return contMouse(battlefield[i][j]) && pythagor(i - us[select].positiony, j - us[select].positionx) <= sqr(us[select].ms) && battlefieldState[i][j] == "free";
+	buildReachable();
+	bool inReach = reachable[i][j];
+	return contMouse(battlefield[i][j]) && pythagor(i - us[select].positiony, j - us[select].positionx) <= sqr(us[select].ms) && battlefieldState[i][j] == "free" && inReach;
 }
 bool activeCondition() {
 	return us[select].hasActive && contMouse(us[select].activeButton) && us[select].cooldown == 0;
@@ -672,7 +831,6 @@ void usPossibleActions(Clock& rattle, vector<vector<RectangleShape>>& battlefiel
 			if (moveCondition(battlefield, i, j)) {
 				battlefieldState[us[select].positiony][us[select].positionx] = "free";
 				us[select].move(j - us[select].positionx, i - us[select].positiony);
-				battlefieldState[i][j] = "friend";
 				rattle.restart();
 				return;
 			}
@@ -727,11 +885,12 @@ bool legalActiveTarget(vector<vector<RectangleShape>>& battlefield, Clock& rattl
 	return goodTime && goodPosition && Mouse::isButtonPressed(Mouse::Left);
 }
 void paintBattlefieldWithMoveRange(vector<vector<RectangleShape>>& battlefield, int i, int j) {
-	if (pythagor(i - us[select].positiony, j - us[select].positionx) <= sqr(us[select].ms)) {
+	bool inReach = reachable[i][j];
+	if (pythagor(i - us[select].positiony, j - us[select].positionx) <= sqr(us[select].ms) && inReach) {
 		battlefield[i][j].setFillColor(Color(0, 255, 0, 100));
-	} else if (!us[select].isRangeUnit && battlefieldState[i][j] == "enemy" && pythagor(i - us[select].positiony, j - us[select].positionx) <= sqr(us[select].ms) + 1) {
+	} else if (!us[select].isRangeUnit && battlefieldState[i][j] == "enemy" && pythagor(i - us[select].positiony, j - us[select].positionx) <= sqr(us[select].ms) + 1 && inReach) {
 		battlefield[i][j].setFillColor(Color(0, 255, 0, 100));
-	} else if (us[select].isRangeUnit && battlefieldState[i][j] == "enemy" && pythagor(i - us[select].positiony, j - us[select].positionx) <= sqr(us[select].attackRange)) {
+	} else if (us[select].isRangeUnit && battlefieldState[i][j] == "enemy" && pythagor(i - us[select].positiony, j - us[select].positionx) <= sqr(us[select].attackRange && inReach)) {
 		battlefield[i][j].setFillColor(Color(0, 255, 0, 100));
 	} else {
 		battlefield[i][j].setFillColor(Color::Transparent);
@@ -741,6 +900,7 @@ void colouriseBattlefieldUs(vector<vector<RectangleShape>>& battlefield) {
 	for (int i = 0; i < h; i++) {
 		for (int j = 0; j < w; j++) {
 			if (select != -1 && globalState == PGS::free) {
+				buildReachable("enemy");
 				paintBattlefieldWithMoveRange(battlefield, i, j);
 			}
 			else {
@@ -842,12 +1002,14 @@ void aiFindTargetToAttack(int& targetx, int& targety, int i) {
 }
 bool aiCanAttackThis(int i) {
 	if (!they[select].isRangeUnit) {
-		return us[i].alive && pythagor(us[i].positionx - they[select].positionx, us[i].positiony - they[select].positiony) <= sqr(they[select].ms);
+		buildReachable();
+		return us[i].alive && pythagor(us[i].positionx - they[select].positionx, us[i].positiony - they[select].positiony) <= sqr(they[select].ms) && reachable[us[i].positiony][us[i].positionx];
 	}
 	return us[i].alive && pythagor(us[i].positionx - they[select].positionx, us[i].positiony - they[select].positiony) <= sqr(they[select].attackRange);
 }
 bool aiDestinationBusy(int dx, int dy) {
-	return battlefieldState[they[select].positiony + dy][they[select].positionx + dx] != "free";
+	buildReachable();
+	return battlefieldState[they[select].positiony + dy][they[select].positionx + dx] != "free" || !reachable[they[select].positiony + dy][they[select].positionx + dx];
 }
 void aiFindTargetToMove(int& dx, int& dy) {
 	int minrastkv = -1;
@@ -918,14 +1080,14 @@ void aiActions() {
 		}
 	}
 	battlefieldState[they[select].positiony][they[select].positionx] = "free";
-	battlefieldState[they[select].positiony + dy][they[select].positionx + dx] = "enemy";
 	they[select].move(dx, dy);
-	nowtargetx = -1;
-	nowtargety = -1;
 	return;
 }
 bool continueBulletAnimationCondition(Clock& rattle) {
 	return damaged != -1 && (globalState == PGS::particle_flying || globalState== PGS::dealing_damage) && rattle.getElapsedTime().asMilliseconds() >= 10; //mb select
+}
+bool inMovement() {
+	return globalState == PGS::running;
 }
 void botTurn(Clock& rattle, vector<vector<RectangleShape>>& battlefield) {
 	if (!they[select].alive) {
@@ -933,6 +1095,9 @@ void botTurn(Clock& rattle, vector<vector<RectangleShape>>& battlefield) {
 	}
 	if (aiNeedToChoose()) {
 		aiActions();
+	}
+	if (inMovement()) {
+		they[select].move(0, 0);
 	}
 	if (continueMoveAnimationCondition(rattle)) {
 		they[select].move();
@@ -961,6 +1126,9 @@ void playerTurn(Clock& rattle, vector<vector<RectangleShape>>& battlefield, Rect
 	}
 	if (weCanInteract(rattle)) {
 		usPossibleActions(rattle, battlefield, skipTurnButton);
+	}
+	if (inMovement()) {
+		us[select].move(0, 0);
 	}
 	if (continueAttackAnimationCondition(rattle)) {
 		us[select].attack(they[damaged], us, they);
@@ -1088,10 +1256,14 @@ int main()
 		}
 	}
 
-	Unit scytheofvyse(2, 2, 1, 1, 1, 1);
+	battlefieldState[1][0] = "wall";
+	battlefieldState[0][1] = "wall";
+
+
+	Unit scytheofvyse(2, 3, 1, 2, 2, 1);
 	string mysticStaff = "friend";
 	scytheofvyse.setType(mysticStaff);
-	battlefieldState[1][1] = "friend";
+	battlefieldState[2][2] = "friend";
 	scytheofvyse.passives_whenAttack.push_back(poison_touch);
 	scytheofvyse.statuses = statuses;
 	scytheofvyse.hasActive = true;
@@ -1107,7 +1279,7 @@ int main()
 	//scytheofvyse.bullet = bul;
 	us.push_back(scytheofvyse);
 
-	scytheofvyse = Unit(4, 2, 0, 10, 5, 1);
+	scytheofvyse = Unit(4, 2, 0, 3, 2, 1);
 	mysticStaff = "enemy";
 	//scytheofvyse.hasActive = true;
 	//scytheofvyse.active = 0;
@@ -1123,7 +1295,7 @@ int main()
 	bul.startSize = 20;
 	bul.endSize = 20;
 	scytheofvyse.bullet = bul;
-	battlefieldState[5][10] = "enemy";
+	battlefieldState[2][3] = "enemy";
 	scytheofvyse.statuses = statuses;
 	they.push_back(scytheofvyse);
 
